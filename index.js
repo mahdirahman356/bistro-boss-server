@@ -6,7 +6,7 @@ const app = express()
 const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 app.use(cors())
 app.use(express.json())
 
@@ -41,7 +41,6 @@ async function run() {
 
     // middleware
     const verifyToken = (req, res, next) => {
-      // const token = req.headers.authorisation.split(' ')[1]
       if(!req.headers.authorisation){
         return res.status(401).send({message : "unauthorise access"})
       }
@@ -52,6 +51,7 @@ async function run() {
           return res.status(401).send({message : "unauthorise access"})
         }
         req.decoded = decoded
+        // console.log(decoded, "verify decoded ")
         next()
       })
       
@@ -61,6 +61,7 @@ async function run() {
       const email = req.decoded.email
       const query = {email: email}
       const user = await userCollection.findOne(query)
+      console.log(user)
       const isAdmin = user?.role === "Admin"
       if(!isAdmin){
         return res.status(403).send({message : "forbidden access"})
@@ -74,6 +75,51 @@ async function run() {
       res.send(result)
 
     })
+
+    app.get("/menu/:id", async(req, res) => {
+      const id = req.params.id
+      const query = {_id: new ObjectId(id)}
+      let result = await menuCollection.findOne(query)
+      res.send(result)
+    })
+
+
+    app.post("/menu", verifyToken, verifyAdmin, async(req, res) => {
+      const item = req.body
+      const result = await menuCollection.insertOne(item)
+      res.send(result)
+    })
+
+    app.patch("/menu/:id", async (req, res) => {
+      try {
+          let id = req.params.id;
+          let menu = req.body;
+          let filter = { _id: new ObjectId(id) };
+          const options = { upsert: true };
+          const updateDoc = {
+              $set: {
+                  name: menu.name,
+                  price: menu.price,
+                  category: menu.category,
+                  image: menu.image,
+                  recipe: menu.recipe
+              },
+          };
+          const result = await menuCollection.updateOne(filter, updateDoc, options);
+          res.send(result);
+      } catch (error) {
+          res.status(500).send({ message: "An error occurred while updating the menu.", error: error.message });
+      }
+  });
+  
+
+    app.delete("/menu/:id", verifyToken, verifyAdmin,  async(req, res) => {
+      const id = req.params.id
+      const query = {_id: new ObjectId(id)}
+      let result = await menuCollection.deleteOne(query)
+      res.send(result)
+    })
+
     
     // reviews related
     app.get("/reviews", async(req, res) => {
@@ -132,9 +178,9 @@ async function run() {
       res.send(result)
     })
 
-    app.get("/users/admin/:email", verifyToken, verifyAdmin, async(req, res) => {
+    app.get("/users/admin/:email", verifyToken, async(req, res) => {
         const email = req.params.email
-        console.log(req.decoded.email)
+        console.log(req.decoded,"decoded")
         if(email !== req.decoded.email){
           return res.status(403).send({message : "forbidden access"})
         }
